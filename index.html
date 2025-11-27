@@ -733,11 +733,19 @@
       });
 
       try {
-        const resp = await fetch(`${BACKEND_BASE}/api/route?${params.toString()}`);
+        // ★★★ 여기 fetch 부분이 수정되었습니다 ★★★
+        const resp = await fetch(`${BACKEND_BASE}/api/route?${params.toString()}`, {
+            method: 'GET',
+            headers: {
+                "ngrok-skip-browser-warning": "69420", // 이 헤더가 있어야 ngrok 경고창을 무시하고 통과합니다
+                "Content-Type": "application/json"
+            }
+        });
+
         if (!resp.ok) {
           const msg = await resp.text();
           console.error("route error", msg);
-          setStatus("경로 계산 실패");
+          setStatus("경로 계산 실패 (서버 응답 오류)");
           return;
         }
         const data = await resp.json();
