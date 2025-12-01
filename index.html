@@ -1,9 +1,167 @@
-<script>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>지도_DEMO (No Backend)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <script type="text/javascript"
+          src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=evhib7m5a4&callback=initMap">
+  </script>
+
+  <style>
+    /* ---------- 기존 스타일 유지 ---------- */
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans KR', Arial, sans-serif;
+      background: #f5f5f7;
+      color: #111827;
+    }
+    #app {
+      display: flex; flex-direction: column; height: 100vh; position: relative;
+    }
+
+    #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; margin-top: 0; z-index: 0; }
+
+    #sidebar {
+      position: fixed; z-index: 20; background: white; box-shadow: 0 0 15px rgba(0,0,0,0.15);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      top: 0; bottom: 0; left: 0; width: 320px;
+      transform: translateX(-100%); border-right: 1px solid #eee;
+      display: flex; flex-direction: column;
+    }
+    #sidebar.active { transform: translateX(0); }
+
+    @media (max-width: 768px) {
+      #sidebar {
+        top: auto; left: 0; right: 0; bottom: 0; width: 100%; height: 45vh;
+        border-right: none; border-radius: 20px 20px 0 0; transform: translateY(100%);
+      }
+      #sidebar.active { transform: translateY(0); }
+    }
+
+    .sb-header {
+      flex-shrink: 0; display: flex; justify-content: space-between; align-items: start;
+      padding: 16px 20px; border-bottom: 1px solid #f3f4f6; background: white; border-radius: 20px 20px 0 0;
+    }
+    .sb-title { font-size: 17px; font-weight: 700; color: #111827; }
+    .sb-close { border: none; background: none; font-size: 24px; color: #9ca3af; padding: 0; cursor: pointer; line-height: 1;}
+    .sb-body { flex: 1; padding: 20px; overflow-y: auto; }
+    .sb-row { margin-bottom: 10px; font-size: 14px; color: #374151; line-height: 1.5; }
+
+    #floating-controls {
+      position: fixed; right: 12px; bottom: 24px; z-index: 10;
+      display: flex; flex-direction: column; gap: 8px; align-items: stretch; 
+    }
+
+    #legend {
+      background: rgba(255,255,255,0.95); backdrop-filter: blur(4px);
+      padding: 10px 12px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      font-size: 12px; min-width: 140px; box-sizing: border-box;
+    }
+    .lg-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+    .swatch { width: 10px; height: 10px; border-radius: 50%; display:inline-block; }
+    .lg-title { font-weight:700; margin-bottom:6px; color: #4b5563; }
+
+    #mode-toggle {
+      display: flex; background: rgba(255,255,255,0.95); backdrop-filter: blur(4px);
+      padding: 4px; border-radius: 99px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); box-sizing: border-box;
+    }
+
+    .seg-btn {
+      flex: 1; justify-content: center; border: none; background: transparent;
+      padding: 8px 0; border-radius: 99px; font-size: 12px; font-weight: 600;
+      cursor: pointer; color: #6b7280; display: inline-flex; align-items: center; gap: 5px; transition: all 0.2s;
+    }
+    .seg-btn.active { background: #f3f4f6; color: #111827; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); }
+    .seg-btn span.dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
+    .seg-btn#btn-eff span.dot { background: #8b5cf6; }
+
+    #filter-control {
+      position: fixed; left: 12px; bottom: 20px; z-index: 20;
+      width: 40px; height: 40px; border-radius: 20px;
+      background: rgba(255,255,255,0.95); backdrop-filter: blur(4px);
+      color: #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      display: flex; align-items: center; overflow: hidden; white-space: nowrap;
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s, opacity 0.3s, transform 0.3s;
+      cursor: pointer;
+    }
+    #filter-control.expanded { width: 220px; background: #fff; border-color: #d1d5db; }
+    #filter-control.hidden-ui { opacity: 0; pointer-events: none; transform: translateX(-20px); }
+
+    #filter-icon-wrapper {
+      min-width: 40px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    #filter-slider-box {
+      display: flex; align-items: center; gap: 8px; padding: 16px; opacity: 0; white-space: nowrap; transition: opacity 0.2s ease-in;
+    }
+    #filter-control.expanded #filter-slider-box { opacity: 1; }
+    #time-slider { width: 100px; accent-color: #2563eb; cursor: pointer; }
+    #filter-val-label { font-size: 13px; font-weight: 700; color: #2563eb; min-width: 36px; text-align: right; }
+
+    .dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: transform 0.1s; }
+    .stop-dot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid #fff; background: #1a73e8; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+
+    .station-root-dot {
+      width: 10px; height: 10px; border-radius: 50%; background: white; border: 3px solid #111827;
+      position: relative; box-sizing: content-box; box-shadow: 0 1px 3px rgba(0,0,0,0.3); pointer-events: none;
+    }
+    .station-label {
+      position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+      padding: 4px 8px; border-radius: 6px; color: white; font-size: 11px; font-weight: 600;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3); white-space: nowrap; z-index: 20;
+    }
+    .station-label::after {
+      content: ''; position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%); border-width: 4px; border-style: solid;
+    }
+    .station-label.board { background: #2563eb; }
+    .station-label.board::after { border-color: #2563eb transparent transparent transparent; }
+    .station-label.drop { background: #ef4444; }
+    .station-label.drop::after { border-color: #ef4444 transparent transparent transparent; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="map"></div>
+
+    <div id="sidebar">
+      <div id="sidebar-content" style="height: 100%; display: flex; flex-direction: column;"></div>
+    </div>
+
+    <div id="floating-controls">
+      <div id="legend">
+        <div class="lg-title" id="legend-title">소요시간 (분)</div>
+        <div id="legend-rows"></div>
+      </div>
+      <div id="mode-toggle">
+        <button id="btn-time" class="seg-btn active"><span class="dot"></span>시간</button>
+        <button id="btn-eff" class="seg-btn"><span class="dot"></span>효율</button>
+      </div>
+    </div>
+
+    <div id="filter-control">
+      <div id="filter-icon-wrapper">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line>
+        <line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line>
+        <line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line>
+        <line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line>
+        <line x1="17" y1="16" x2="23" y2="16"></line>
+        </svg>
+      </div>
+      <div id="filter-slider-box">
+        <span id="filter-val-label">전체</span>
+        <input type="range" id="time-slider" min="5" max="60" step="5" value="60">
+      </div>  
+    </div>
+  </div>
+
+  <script>
     // ---------- 1. 기본 설정 ----------
     const DEST = { lat: 37.563729, lng: 126.936898 }; 
     
-    // [중요] 여기에 ODsay 'WEB용' API Key를 넣으세요 (Render 키 아님!)
-    const ODSAY_KEY = "oU72P97mHlqhG+UPuxw2Lw"; 
+    // [중요] 여기에 ODsay 'WEB용' API Key (Service URI)
+    const ODSAY_KEY = "oU72P97mHlqhG+UPuxw2LwURI"; 
 
     const DATA_URL = "data/data.json";
 
@@ -19,7 +177,7 @@
     let routePolylines = [];
     let stopMarkers = [];
     let selectedPoint = null; 
-    let FILTER_LIMIT = 60;
+    let FILTER_LIMIT = 60; // 60이면 '전체'로 간주
 
     const CLUSTER_THRESHOLD = 3000; 
     const CLUSTER_ZOOM_ON   = 15; 
@@ -44,7 +202,7 @@
     }
     function fmt(n, d=0) { return (n == null || n === '' || isNaN(+n)) ? '-' : (+n).toFixed(d); }
     function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
-    
+
     function colorForTime(t) {
       if (t == null || isNaN(+t)) return '#9e9e9e';
       if (t <= 10) return COLORS[0]; if (t <= 15) return COLORS[1];
@@ -73,7 +231,7 @@
       return [q(0.2), q(0.4), q(0.6), q(0.8)];
     }
 
-    // ---------- 3. UI 제어 (기존과 동일) ----------
+    // ---------- 3. UI 제어 ----------
     function applyMode() {
       updateLegend();
       document.getElementById('btn-time').classList.toggle('active', MODE==='time');
@@ -175,21 +333,14 @@
       if (window.currentMarker) requestRoute(window.currentMarker);
     }
 
-    // 스마트 뷰포트 정렬
     function fitMapToBounds(coords) {
       if (!mapInstance || !coords || coords.length === 0) return;
-      
       const bounds = new naver.maps.LatLngBounds();
       coords.forEach(p => bounds.extend(p));
-
       const winWidth = window.innerWidth;
       const winHeight = window.innerHeight;
       const isMobile = winWidth < 768;
-      
-      let topPad = 50;
-      let rightPad = 50;
-      let bottomPad = 50;
-      let leftPad = 50;
+      let topPad = 50, rightPad = 50, bottomPad = 50, leftPad = 50;
 
       if (isMobile) {
         const sheetHeight = winHeight * 0.45;
@@ -271,7 +422,6 @@
         });
         marker.__props = activePt.props;
         marker.__coord = { lat: activePt.lat, lng: activePt.lng };
-        
         naver.maps.Event.addListener(marker, 'click', () => {
            openSidebar(marker);
            requestRoute(marker);
@@ -335,7 +485,6 @@
       });
       m.__props = props;
       m.__coord = { lat: pt.lat, lng: pt.lng };
-
       naver.maps.Event.addListener(m, 'click', () => {
         selectedPoint = { lat: pt.lat, lng: pt.lng };
         updateVisibleMarkers(); 
@@ -345,7 +494,7 @@
       markers.push(m);
     }
 
-    // ---------- 5. 경로 로직 (★ 프론트엔드 전용으로 완전 교체 ★) ----------
+    // ---------- 5. 경로 로직 (프론트엔드 단독 구현) ----------
     function clearRouteOverlays() {
       routePolylines.forEach(p => p.setMap(null)); routePolylines = [];
       stopMarkers.forEach(m => m.setMap(null)); stopMarkers = [];
@@ -364,7 +513,7 @@
       fitMapToBounds([originLatLng, destLatLng]);
     }
 
-    // [핵심] 백엔드 없이 ODsay 직접 호출하는 함수
+    // [핵심] 백엔드 없이 ODsay 직접 호출 (버스 매칭 로직 포함)
     async function requestRoute(marker) {
       const p = marker.__props || {};
       const coord = marker.__coord || {}; 
@@ -376,21 +525,21 @@
       setStatus("경로 계산 중… (Front-end Direct)");
 
       try {
-        // 1. 길찾기 API 호출 (searchPubTransPathT)
+        // 1. 길찾기 API 호출
         const searchUrl = `https://api.odsay.com/v1/api/searchPubTransPathT?SX=${coord.lng}&SY=${coord.lat}&EX=${DEST.lng}&EY=${DEST.lat}&OPT=0&SearchPathType=0&apiKey=${encodeURIComponent(ODSAY_KEY)}`;
         const searchRes = await fetch(searchUrl);
         const searchData = await searchRes.json();
 
         if (searchData.error) throw new Error(JSON.stringify(searchData.error));
 
-        // 2. 파이썬에 있던 '최적 경로 선택 로직'을 JS로 구현
+        // 2. 파이썬에 있던 '최적 경로 선택 로직' JS 버전 호출
         const bestPath = selectPathForRideJS(searchData, p.ride, p.board, p.drop);
         if (!bestPath) {
              drawWalkOnlyRoute(coord);
              return;
         }
 
-        // 3. 노선 그래픽 데이터 호출 (loadLane)
+        // 3. 노선 그래픽 데이터 호출
         const mapObj = bestPath.info.mapObj;
         const laneUrl = `https://api.odsay.com/v1/api/loadLane?mapObject=0:0@${mapObj}&apiKey=${encodeURIComponent(ODSAY_KEY)}`;
         const laneRes = await fetch(laneUrl);
@@ -398,7 +547,7 @@
 
         if (laneData.error) throw new Error(JSON.stringify(laneData.error));
 
-        // 4. 그리기
+        // 4. 지도에 그리기
         drawRouteFromLane(laneData, coord, p); 
 
       } catch (e) {
@@ -408,15 +557,14 @@
       }
     }
 
-    // [핵심] 파이썬의 score_path_for_ride 로직을 JS로 번역
+    // [로직 이식] 파이썬의 score_path_for_ride -> JS 구현
     function selectPathForRideJS(data, ride, board, drop) {
         if (!data.result || !data.result.path) return null;
         const paths = data.result.path;
         
-        // 검색 조건이 없으면 그냥 1등 경로 리턴
         if (!ride && !board && !drop) return paths[0];
 
-        let best = null; // {score, totalTime, path}
+        let best = null; 
 
         paths.forEach(path => {
             let score = 0;
@@ -424,11 +572,11 @@
             const totalTime = info.totalTime;
             const subPaths = path.subPath || [];
 
-            // 1. ride 매칭
+            // 1. ride (버스 번호) 매칭
             if (ride) {
                 const rideNorm = norm(ride);
                 for (const sp of subPaths) {
-                    if (![1, 2].includes(sp.trafficType)) continue; // 1:지하철, 2:버스
+                    if (![1, 2].includes(sp.trafficType)) continue; 
                     const lanes = sp.lane || [];
                     for (const lane of lanes) {
                         const candidates = [];
@@ -459,7 +607,7 @@
             if (board && stationNames.some(s => s.includes(norm(board)))) score += 5;
             if (drop && stationNames.some(s => s.includes(norm(drop)))) score += 5;
 
-            // 최고 점수 갱신 (동점이면 시간 짧은 순)
+            // 최고 점수 갱신
             if (best === null || score > best.score || (score === best.score && totalTime < best.totalTime)) {
                 best = { score, totalTime, path };
             }
@@ -514,9 +662,7 @@
             lastRoutePoint = latlng;
           }
 
-          if (path.length >= 2) {
-            polyPaths.push(path);
-          }
+          if (path.length >= 2) polyPaths.push(path);
 
           const stations = section.station || [];
           for (const st of stations) {
@@ -571,7 +717,6 @@
           strokeColor: '#111827', strokeOpacity: 0.8, strokeStyle: [4, 6], strokeWeight: 2
         });
         routePolylines.push(walk1);
-
         const boardMarker = new naver.maps.Marker({
           map: mapInstance, position: boardLatLng, zIndex: 1000,
           icon: {
@@ -592,7 +737,6 @@
           strokeColor: '#111827', strokeOpacity: 0.8, strokeStyle: [4, 6], strokeWeight: 2
         });
         routePolylines.push(walk2);
-
         const dropMarker = new naver.maps.Marker({
           map: mapInstance, position: dropLatLng, zIndex: 1000,
           icon: {
@@ -610,7 +754,7 @@
       setStatus("경로 표시 완료");
     }
 
-    // ---------- 6. 로드 및 초기화 (기존과 동일) ----------
+    // ---------- 6. 로드 및 초기화 ----------
     async function loadData() {
       try {
         const res = await fetch(DATA_URL);
@@ -673,3 +817,5 @@
       loadData();
     }
   </script>
+</body>
+</html>
