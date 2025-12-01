@@ -56,14 +56,39 @@ def odsay_get(endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"ODSAY HTTP error: {e}")
 
-    data = resp.json()
+    try:
+        data = resp.json()
+    except Exception:
+         raise HTTPException(status_code=502, detail="ODSAY 응답이 JSON 형식이 아닙니다.")
+
+    # [수정된 부분] 에러가 딕셔너리가 아니라 리스트로 올 때를 대비한 방어 코드
     if isinstance(data, dict) and "error" in data:
-        msg = data["error"].get("msg", "ODSAY error")
-        code = data["error"].get("code", "")
+        error_obj = data["error"]
+        
+        msg = "ODSAY error"
+        code = ""
+
+        # 에러가 리스트인 경우 (예: [{"code":..., "msg":...}])
+        if isinstance(error_obj, list) and len(error_obj) > 0:
+            first_item = error_obj[0]
+            if isinstance(first_item, dict):
+                msg = first_item.get("msg", msg)
+                code = first_item.get("code", code)
+            else:
+                msg = str(first_item)
+        
+        # 에러가 딕셔너리인 경우 (예: {"code":..., "msg":...})
+        elif isinstance(error_obj, dict):
+            msg = error_obj.get("msg", msg)
+            code = error_obj.get("code", code)
+        
+        # 에러가 그냥 문자열인 경우
+        elif isinstance(error_obj, str):
+            msg = error_obj
+
         raise HTTPException(status_code=502, detail=f"ODSAY error {code}: {msg}")
 
     return data
-
 # ----- 문자열 정규화 유틸 -----
 
 def norm(s: Optional[str]) -> str:
