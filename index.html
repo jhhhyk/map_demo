@@ -1,306 +1,10 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <title>지도_DEMO</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <script type="text/javascript"
-          src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=evhib7m5a4&callback=initMap">
-  </script>
-
-  <style>
-    /* ---------- 스타일은 기존 완성본 유지 ---------- */
-    html, body { height: 100%; margin: 0; overflow: hidden; }
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans KR', Arial, sans-serif;
-      background: #f5f5f7;
-      color: #111827;
-    }
-    #app {
-      display: flex; flex-direction: column; height: 100vh; position: relative;
-    }
-
-    #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; margin-top: 0; z-index: 0; }
-
-    #sidebar {
-      position: fixed; z-index: 20; background: white; box-shadow: 0 0 15px rgba(0,0,0,0.15);
-      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      top: 0; bottom: 0; left: 0; width: 320px;
-      transform: translateX(-100%); border-right: 1px solid #eee;
-      display: flex; flex-direction: column;
-    }
-    #sidebar.active { transform: translateX(0); }
-
-    @media (max-width: 768px) {
-      #sidebar {
-        top: auto; left: 0; right: 0; bottom: 0; width: 100%; height: 45vh;
-        border-right: none; border-radius: 20px 20px 0 0; transform: translateY(100%);
-      }
-      #sidebar.active { transform: translateY(0); }
-    }
-
-    .sb-header {
-      flex-shrink: 0; display: flex; justify-content: space-between; align-items: start;
-      padding: 16px 20px; border-bottom: 1px solid #f3f4f6; background: white; border-radius: 20px 20px 0 0;
-    }
-    .sb-title { font-size: 17px; font-weight: 700; color: #111827; }
-    .sb-close { border: none; background: none; font-size: 24px; color: #9ca3af; padding: 0; cursor: pointer; line-height: 1;}
-    .sb-body { flex: 1; padding: 20px; overflow-y: auto; }
-    .sb-row { margin-bottom: 10px; font-size: 14px; color: #374151; line-height: 1.5; }
-    .sb-btn-action {
-      width: 100%; padding: 12px; margin-top: 10px; background: #111827; color: white;
-      border: none; border-radius: 8px; font-weight: 600; cursor: pointer;
-    }
-
-    #floating-controls {
-      position: fixed;
-      right: 12px; 
-      bottom: 24px;
-      z-index: 10;
-  
-      display: flex;
-      flex-direction: column; 
-      gap: 8px; /* 범례와 토글 사이 간격 */
-  
-      /* ★ 핵심: 자식 요소(범례, 토글)의 너비를 서로 같게(가장 넓은 쪽에) 맞춤 */
-      align-items: stretch; 
-    }
-
-    #legend {
-      background: rgba(255,255,255,0.95); 
-      backdrop-filter: blur(4px);
-      padding: 10px 12px; 
-      border-radius: 12px; /* 둥근 사각형 */
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-      font-size: 12px; 
-      min-width: 140px; /* 최소 너비 보장 */
-      box-sizing: border-box; /* 패딩 포함 너비 계산 */
-    }
-    .lg-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
-    .swatch { width: 10px; height: 10px; border-radius: 50%; display:inline-block; }
-    .lg-title { font-weight:700; margin-bottom:6px; color: #4b5563; }
-
-    #mode-toggle {
-      display: flex; /* 내부 버튼들을 가로로 배치 */
-      background: rgba(255,255,255,0.95);
-      backdrop-filter: blur(4px);
-      padding: 4px; 
-      border-radius: 99px; /* ★ 알약 모양 (완전 둥글게) */
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-      box-sizing: border-box;
-    }
-
-    .seg-btn {
-      flex: 1; 
-      justify-content: center; /* 텍스트 가운데 정렬 */
-  
-      border: none; 
-      background: transparent; 
-      padding: 8px 0; /* 위아래 여백만 줌 (좌우는 flex로 자동 조절) */
-      border-radius: 99px; /* 버튼 자체도 알약 모양 */
-      font-size: 12px; 
-      font-weight: 600; 
-      cursor: pointer; 
-      color: #6b7280;
-      display: inline-flex; 
-      align-items: center; 
-      gap: 5px; 
-      transition: all 0.2s;
-    }
-    .seg-btn.active { background: #f3f4f6; color: #111827; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); } /* 활성 스타일 미세 조정 */
-    .seg-btn span.dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
-    .seg-btn#btn-eff span.dot { background: #8b5cf6; }
-
-    #filter-control {
-      position: fixed;
-      left: 12px;
-      bottom: 20px;
-      z-index: 20;
-
-      /* 원형 모양 잡기 */
-      width: 40px;
-      height: 40px;
-      border-radius: 20px;
-  
-      /* 디자인 (우측 컴포넌트와 통일) */
-      background: rgba(255,255,255,0.95);
-      backdrop-filter: blur(4px);
-      color: #374151; /* 아이콘 색상 (진한 회색) */
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  
-      /* 내부 아이콘 정렬 */
-      display: flex;
-      align-items: center;
-      overflow: hidden; /* 내부 슬라이더 숨김 */
-      white-space: nowrap;
-  
-      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s, opacity 0.3s, transform 0.3s;
-      cursor: pointer;
-    }
-
-    #filter-control.expanded {
-      width: 220px; /* 슬라이더가 들어갈 공간 확보 */
-      background: #fff;
-      border-color: #d1d5db;
-    }
-
-    #filter-control.hidden-ui {
-      opacity: 0;
-      pointer-events: none; /* 안 보일 때 클릭 방지 */
-      transform: translateX(-20px); /* 왼쪽으로 살짝 밀리면서 사라짐 */
-    }
-
-    #filter-icon-wrapper {
-      min-width: 40px;
-      width: 40px;
-      height: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-
-    #filter-slider-box {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 16px;
-      opacity: 0; /* 기본적으로 숨김 */
-      white-space: nowrap;
-      transition: opacity 0.2s ease-in;
-    }
-
-    #filter-control.expanded #filter-slider-box {
-      opacity: 1;
-    }
-
-    /* 슬라이더(Range Input) 스타일 커스텀 */
-    #time-slider {
-      width: 100px;
-      accent-color: #2563eb; /* 슬라이더 색상 */
-      cursor: pointer;
-    }
-
-    #filter-val-label {
-      font-size: 13px;
-      font-weight: 700;
-      color: #2563eb;
-      min-width: 36px;
-      text-align: right;
-    }
-
-    .dot {
-      width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: transform 0.1s;
-    }
-    .stop-dot {
-      width: 8px; height: 8px; border-radius: 50%; border: 2px solid #fff; background: #1a73e8;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    }
-
-    /* 승하차 정류장 라벨 스타일 */
-    /* 1. 마커의 본체 (= 점) */
-    .station-root-dot {
-      width: 10px; 
-      height: 10px; 
-      border-radius: 50%; 
-      background: white;
-      border: 3px solid #111827; /* JS에서 인라인으로 색상 덮어씌움 */
-  
-      /* 자식(라벨)의 위치 기준점이 됨 */
-      position: relative; 
-  
-      /* 크기 계산 단순화 */
-      box-sizing: content-box; 
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-  
-      /* 마우스 이벤트 무시 (선택사항) */
-      pointer-events: none;
-    }
-
-    /* 2. 점 위에 둥둥 떠있는 라벨 */
-    .station-label {
-      position: absolute;
-  
-      /* 점의 바로 위쪽으로 배치 */
-      bottom: 18px; /* 점 높이(16px) + 약간의 여백(2px) */
-      left: 50%;
-  
-      /* 가로 중앙 정렬만 수행 (세로 계산 불필요) */
-      transform: translateX(-50%);
-  
-      /* 디자인 (기존과 동일) */
-      padding: 4px 8px;
-      border-radius: 6px;
-      color: white;
-      font-size: 11px;
-      font-weight: 600;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-      white-space: nowrap;
-      z-index: 20; /* 점보다 위에 표시 */
-    }
-    /* 말풍선 꼬리 만들기 */
-    .station-label::after {
-      content: ''; position: absolute; bottom: -4px; left: 50%;
-      transform: translateX(-50%); border-width: 4px; border-style: solid;
-    }
-
-
-    /* 승차 스타일 (파란색 계열) */
-    .station-label.board { background: #2563eb; }
-    .station-label.board::after { border-color: #2563eb transparent transparent transparent; }
-
-    /* 하차 스타일 (붉은색 계열) */
-    .station-label.drop { background: #ef4444; }
-    .station-label.drop::after { border-color: #ef4444 transparent transparent transparent; }
-  </style>
-</head>
-<body>
-  <div id="app">
-
-    <div id="map"></div>
-
-    <div id="sidebar">
-      <div id="sidebar-content" style="height: 100%; display: flex; flex-direction: column;"></div>
-    </div>
-
-    <div id="floating-controls">
-      <div id="legend">
-        <div class="lg-title" id="legend-title">소요시간 (분)</div>
-        <div id="legend-rows"></div>
-      </div>
-
-      <div id="mode-toggle">
-        <button id="btn-time" class="seg-btn active"><span class="dot"></span>시간</button>
-        <button id="btn-eff" class="seg-btn"><span class="dot"></span>효율</button>
-      </div>
-    </div>
-
-    <div id="filter-control">
-      <div id="filter-icon-wrapper">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="4" y1="21" x2="4" y2="14"></line>
-        <line x1="4" y1="10" x2="4" y2="3"></line>
-        <line x1="12" y1="21" x2="12" y2="12"></line>
-        <line x1="12" y1="8" x2="12" y2="3"></line>
-        <line x1="20" y1="21" x2="20" y2="16"></line>
-        <line x1="20" y1="12" x2="20" y2="3"></line>
-        <line x1="1" y1="14" x2="7" y2="14"></line>
-        <line x1="9" y1="8" x2="15" y2="8"></line>
-        <line x1="17" y1="16" x2="23" y2="16"></line>
-      </svg>
-    </div>
-    <div id="filter-slider-box">
-      <span id="filter-val-label">전체</span>
-      <input type="range" id="time-slider" min="5" max="60" step="5" value="60">
-    </div>  
-  </div>
-
-  <script>
+<script>
     // ---------- 1. 기본 설정 ----------
     const DEST = { lat: 37.563729, lng: 126.936898 }; 
-    const BACKEND_BASE = "https://map-demo-v7gu.onrender.com";
+    
+    // [중요] 여기에 ODsay 'WEB용' API Key를 넣으세요 (Render 키 아님!)
+    const ODSAY_KEY = "oU72P97mHlqhG+UPuxw2Lw"; 
+
     const DATA_URL = "data/data.json";
 
     const COLORS = ['#22c55e','#84cc16','#eab308','#f97316','#ef4444','#8b5cf6'];
@@ -315,7 +19,7 @@
     let routePolylines = [];
     let stopMarkers = [];
     let selectedPoint = null; 
-    let FILTER_LIMIT = 60; // 60이면 '전체'로 간주
+    let FILTER_LIMIT = 60;
 
     const CLUSTER_THRESHOLD = 3000; 
     const CLUSTER_ZOOM_ON   = 15; 
@@ -340,7 +44,7 @@
     }
     function fmt(n, d=0) { return (n == null || n === '' || isNaN(+n)) ? '-' : (+n).toFixed(d); }
     function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
-
+    
     function colorForTime(t) {
       if (t == null || isNaN(+t)) return '#9e9e9e';
       if (t <= 10) return COLORS[0]; if (t <= 15) return COLORS[1];
@@ -369,7 +73,7 @@
       return [q(0.2), q(0.4), q(0.6), q(0.8)];
     }
 
-    // ---------- 3. UI 제어 ----------
+    // ---------- 3. UI 제어 (기존과 동일) ----------
     function applyMode() {
       updateLegend();
       document.getElementById('btn-time').classList.toggle('active', MODE==='time');
@@ -406,27 +110,20 @@
       const sidebar = document.getElementById('sidebar');
       const content = document.getElementById('sidebar-content');
 
-      // 2. 가격 포맷팅 로직 (5000@50 -> 보증금 5000 / 월세 50)
-      let rentDisplay = esc(p.rent || '-'); // 기본값
+      let rentDisplay = esc(p.rent || '-');
       if (p.rent && p.rent.includes('@')) {
         const parts = p.rent.split('@');
         if (parts.length === 2) {
-          // 필요하다면 뒤에 '만원' 단위를 붙여도 됩니다. 예: parts[0] + '만원'
           rentDisplay = `보증금 ${esc(parts[0])} / 월세 ${esc(parts[1])}`;
         }
       }
 
-      // 1. 이동수단 값 확인 (공백 제거 및 소문자)
       const rideMode = (p.ride || '').toString().trim().toLowerCase();
-
-      // 2. 이동수단에 따라 표시할 HTML 결정
       let routeDetailHtml = '';
 
       if (rideMode === 'walk' || rideMode === 'walk_only') {
-        // [수정 포인트] 도보일 때는 화살표 없이 깔끔하게 '도보 O분'만 표시
         routeDetailHtml = `<span>🚶 도보 ${fmt(p.exp_time)}분</span>`;
       } else {
-        // 대중교통일 때는 기존처럼 상세 단계 표시 (걷기 -> 버스 -> 걷기)
         routeDetailHtml = `
             <span>🚶 ${fmt(p.w1)}분</span>
             <span style="color:#9ca3af">→</span>
@@ -455,8 +152,8 @@
           <div class="sb-row" style="margin-top:12px; font-size:16px; font-weight:600; color:#2563eb;">
              배차간격을 고려한 기대소요시간: ${fmt(p.exp_time)}분
           </div>
-           <div class="sb-row" style="color:#6b7280; font-size:12px;">
-             효율지수: ${fmt(p.efficiency, 3)} (낮을수록 좋음)
+            <div class="sb-row" style="color:#6b7280; font-size:12px;">
+              효율지수: ${fmt(p.efficiency, 3)} (낮을수록 좋음)
         </div>
       `;
       sidebar.classList.add('active');
@@ -465,10 +162,8 @@
 
     function closeSidebar() {
       document.getElementById('sidebar').classList.remove('active');
-
       const filterCtrl = document.getElementById('filter-control');
       if (filterCtrl) filterCtrl.classList.remove('hidden-ui');
-
       clearRouteOverlays();
       if (selectedPoint) {
         selectedPoint = null;
@@ -480,60 +175,46 @@
       if (window.currentMarker) requestRoute(window.currentMarker);
     }
 
-    // 스마트 뷰포트 정렬 (애니메이션 + 정확도 모두 잡는 트릭)
+    // 스마트 뷰포트 정렬
     function fitMapToBounds(coords) {
       if (!mapInstance || !coords || coords.length === 0) return;
       
       const bounds = new naver.maps.LatLngBounds();
       coords.forEach(p => bounds.extend(p));
 
-      // 화면 크기 확인
       const winWidth = window.innerWidth;
       const winHeight = window.innerHeight;
       const isMobile = winWidth < 768;
       
-      // 여백 설정 (사이드바에 가려지지 않게)
       let topPad = 50;
       let rightPad = 50;
       let bottomPad = 50;
       let leftPad = 50;
 
       if (isMobile) {
-        // 모바일: 하단 시트 높이 고려
         const sheetHeight = winHeight * 0.45;
         bottomPad = Math.min(sheetHeight + 40, winHeight * 0.6); 
       } else {
-        // 데스크탑: 사이드바 확인
         const sidebar = document.getElementById('sidebar');
         const isOpen = sidebar && sidebar.classList.contains('active');
-        
         if (isOpen) {
-          // 사이드바 너비(320) + 여유(50)
           const targetPad = 320 + 50;
           leftPad = Math.min(targetPad, winWidth * 0.45);
         }
       }
 
-      // [핵심 트릭]
-      // 1. 현재 위치 기억
       const currentCenter = mapInstance.getCenter();
       const currentZoom = mapInstance.getZoom();
 
-      // 2. fitBounds로 목표 위치(줌, 중심)를 강제로 계산 (화면엔 안 그려짐)
       mapInstance.fitBounds(bounds, {
         top: topPad, right: rightPad, bottom: bottomPad, left: leftPad
       });
       
-      // 3. 계산된 목표 지점 데이터 가져오기
       const targetCenter = mapInstance.getCenter();
       const targetZoom = mapInstance.getZoom();
 
-      // 4. 다시 원래 위치로 순식간에 복귀 (브라우저가 그리기 전에 실행되므로 깜빡임 없음)
       mapInstance.setCenter(currentCenter);
       mapInstance.setZoom(currentZoom);
-
-      // 5. 목표 지점으로 부드럽게 애니메이션 (morph)
-      // morph는 줌과 중심 이동을 동시에 부드럽게 처리합니다.
       mapInstance.morph(targetCenter, targetZoom);
     }
 
@@ -545,53 +226,35 @@
 
       const viewportPoints = [];
       let activePt = null;
-
-      // 슬라이더 필터 활성화 여부
       const isFiltering = FILTER_LIMIT < MAX_SLIDER_VAL;
 
       for (const pt of POINTS) {
         const p = pt.props || {};
         const isSelected = selectedPoint && (pt.lat === selectedPoint.lat && pt.lng === selectedPoint.lng);
-        
         if (isSelected) activePt = pt;
 
-        // 선택된 마커가 아닐 때만 필터링 검사
         if (!isSelected) {
-            
-            // 1. 기존 슬라이더 필터 (시간)
             if (isFiltering && p.exp_time > FILTER_LIMIT) continue;
-
-            // 2. [추가됨] 효율 모드일 때의 특별 제한 조건
             if (MODE === 'eff') {
-                // 조건 A: 시간이 30분을 초과하면 제외
                 if (p.exp_time > 30) continue;
-
-                // 조건 B: 월세가 65만원을 초과하면 제외
-                // 데이터 형식이 "5000@50"이므로 @ 뒤의 숫자를 추출
                 let monthlyRent = 0;
                 if (p.rent && p.rent.toString().includes('@')) {
                     const parts = p.rent.toString().split('@');
                     if (parts.length > 1) {
-                        monthlyRent = Number(parts[1]); // '@' 뒤의 숫자(월세) 변환
+                        monthlyRent = Number(parts[1]);
                     }
                 }
-                
-                // 월세가 65만원을 넘으면 건너뜀 (전세 등 @가 없는 경우는 0원으로 처리되어 통과됨)
                 if (monthlyRent > 65) continue;
             }
         }
-
-        // 3. 현재 화면(지도 영역) 안에 있는 점만 수집
         if (bounds.hasLatLng(new naver.maps.LatLng(pt.lat, pt.lng))) {
           viewportPoints.push(pt);
         }
       }
 
-      // 기존 마커들 삭제
       markers.forEach(m => m.setMap(null)); markers = [];
       clusterMarkers.forEach(c => c.setMap(null)); clusterMarkers = [];
 
-      // 클러스터링 대상 선별 (선택된 마커는 클러스터링에서 제외)
       const pointsToCluster = viewportPoints.filter(pt => {
         if (!selectedPoint) return true;
         return pt.lat !== selectedPoint.lat || pt.lng !== selectedPoint.lng;
@@ -599,7 +262,6 @@
 
       const useCluster = !isFiltering && (pointsToCluster.length > CLUSTER_THRESHOLD || zoom <= CLUSTER_ZOOM_ON);
 
-      // 선택된 집(activePt)은 항상 별도 마커로 표시
       if (activePt) {
         const marker = new naver.maps.Marker({
           map: mapInstance,
@@ -617,7 +279,6 @@
         markers.push(marker);
       }
 
-      // 나머지 점들 그리기 (클러스터링 or 개별 점)
       if (useCluster) {
         const proj = mapInstance.getProjection();
         const clusterMap = new Map();
@@ -648,7 +309,7 @@
             });
             naver.maps.Event.addListener(cm, 'click', () => {
               const nextZoom = Math.min(mapInstance.getZoom() + 2, 17);
-              mapInstance.morph(center, nextZoom); // 여기도 부드럽게 morph 사용
+              mapInstance.morph(center, nextZoom);
             });
             clusterMarkers.push(cm);
           }
@@ -684,81 +345,134 @@
       markers.push(m);
     }
 
-    // ---------- 5. 경로 로직 (★ 원본으로 복원된 부분) ----------
+    // ---------- 5. 경로 로직 (★ 프론트엔드 전용으로 완전 교체 ★) ----------
     function clearRouteOverlays() {
       routePolylines.forEach(p => p.setMap(null)); routePolylines = [];
       stopMarkers.forEach(m => m.setMap(null)); stopMarkers = [];
     }
 
-    // 1. walk-only (점선)
     function drawWalkOnlyRoute(originCoord) {
       if (!mapInstance) return;
       clearRouteOverlays();
-
       const destLatLng = new naver.maps.LatLng(DEST.lat, DEST.lng);
       const originLatLng = new naver.maps.LatLng(originCoord.lat, originCoord.lng);
-
       const poly = new naver.maps.Polyline({
-        map: mapInstance,
-        path: [originLatLng, destLatLng],
-        strokeColor: '#111827',
-        strokeOpacity: 0.8,
-        strokeStyle: 'shortdash',
-        strokeWeight: 2
+        map: mapInstance, path: [originLatLng, destLatLng],
+        strokeColor: '#111827', strokeOpacity: 0.8, strokeStyle: 'shortdash', strokeWeight: 2
       });
       routePolylines.push(poly);
-      
       fitMapToBounds([originLatLng, destLatLng]);
     }
 
-    // 2. API 호출 (원본 방식으로 복원)
+    // [핵심] 백엔드 없이 ODsay 직접 호출하는 함수
     async function requestRoute(marker) {
       const p = marker.__props || {};
       const coord = marker.__coord || {}; 
       
-      // 원본 로직: 'walk' 또는 'walk_only'와 정확히 일치할 때만 점선
       if ((p.ride || '').toLowerCase() === 'walk' || (p.ride || '').toLowerCase() === 'walk_only') {
         drawWalkOnlyRoute(coord);
         return;
       }
-
-      setStatus("경로 계산 중…");
-
-      const params = new URLSearchParams({
-        from_lat: String(coord.lat),
-        from_lng: String(coord.lng),
-        ride: p.ride || '',
-        board: p.board || '',
-        drop: p.drop || ''
-      });
+      setStatus("경로 계산 중… (Front-end Direct)");
 
       try {
-        // ★★★ 여기 fetch 부분이 수정되었습니다 ★★★
-        const resp = await fetch(`${BACKEND_BASE}/api/route?${params.toString()}`, {
-            method: 'GET',
-            headers: {
-                "ngrok-skip-browser-warning": "69420", // 이 헤더가 있어야 ngrok 경고창을 무시하고 통과합니다
-                "Content-Type": "application/json"
-            }
-        });
+        // 1. 길찾기 API 호출 (searchPubTransPathT)
+        const searchUrl = `https://api.odsay.com/v1/api/searchPubTransPathT?SX=${coord.lng}&SY=${coord.lat}&EX=${DEST.lng}&EY=${DEST.lat}&OPT=0&SearchPathType=0&apiKey=${encodeURIComponent(ODSAY_KEY)}`;
+        const searchRes = await fetch(searchUrl);
+        const searchData = await searchRes.json();
 
-        if (!resp.ok) {
-          const msg = await resp.text();
-          console.error("route error", msg);
-          setStatus("경로 계산 실패 (서버 응답 오류)");
-          return;
+        if (searchData.error) throw new Error(JSON.stringify(searchData.error));
+
+        // 2. 파이썬에 있던 '최적 경로 선택 로직'을 JS로 구현
+        const bestPath = selectPathForRideJS(searchData, p.ride, p.board, p.drop);
+        if (!bestPath) {
+             drawWalkOnlyRoute(coord);
+             return;
         }
-        const data = await resp.json();
-        // 원본 로직: p(props)를 세 번째 인자로 전달
-        drawRouteFromLane(data, coord, p); 
+
+        // 3. 노선 그래픽 데이터 호출 (loadLane)
+        const mapObj = bestPath.info.mapObj;
+        const laneUrl = `https://api.odsay.com/v1/api/loadLane?mapObject=0:0@${mapObj}&apiKey=${encodeURIComponent(ODSAY_KEY)}`;
+        const laneRes = await fetch(laneUrl);
+        const laneData = await laneRes.json();
+
+        if (laneData.error) throw new Error(JSON.stringify(laneData.error));
+
+        // 4. 그리기
+        drawRouteFromLane(laneData, coord, p); 
+
       } catch (e) {
-        console.error(e);
-        setStatus("경로 계산 중 오류 발생");
-        drawWalkOnlyRoute(coord); // 오류 시 fallback
+        console.error("ODsay Error:", e);
+        setStatus("경로 호출 실패: " + e.message);
+        drawWalkOnlyRoute(coord);
       }
     }
 
-    // 3. 경로 그리기 (원본 방식으로 복원)
+    // [핵심] 파이썬의 score_path_for_ride 로직을 JS로 번역
+    function selectPathForRideJS(data, ride, board, drop) {
+        if (!data.result || !data.result.path) return null;
+        const paths = data.result.path;
+        
+        // 검색 조건이 없으면 그냥 1등 경로 리턴
+        if (!ride && !board && !drop) return paths[0];
+
+        let best = null; // {score, totalTime, path}
+
+        paths.forEach(path => {
+            let score = 0;
+            const info = path.info;
+            const totalTime = info.totalTime;
+            const subPaths = path.subPath || [];
+
+            // 1. ride 매칭
+            if (ride) {
+                const rideNorm = norm(ride);
+                for (const sp of subPaths) {
+                    if (![1, 2].includes(sp.trafficType)) continue; // 1:지하철, 2:버스
+                    const lanes = sp.lane || [];
+                    for (const lane of lanes) {
+                        const candidates = [];
+                        if (lane.busNo) candidates.push(lane.busNo);
+                        if (lane.name) candidates.push(lane.name);
+                        
+                        let hit = false;
+                        for (const cand of candidates) {
+                            if (rideNorm && norm(cand).includes(rideNorm)) {
+                                score += 10;
+                                hit = true;
+                                break;
+                            }
+                        }
+                        if (hit) break;
+                    }
+                }
+            }
+
+            // 2. 정류장 매칭
+            const stationNames = [];
+            subPaths.forEach(sp => {
+                const list = sp.passStopList || {};
+                const stations = list.stations || list.station || [];
+                stations.forEach(st => stationNames.push(norm(st.stationName)));
+            });
+
+            if (board && stationNames.some(s => s.includes(norm(board)))) score += 5;
+            if (drop && stationNames.some(s => s.includes(norm(drop)))) score += 5;
+
+            // 최고 점수 갱신 (동점이면 시간 짧은 순)
+            if (best === null || score > best.score || (score === best.score && totalTime < best.totalTime)) {
+                best = { score, totalTime, path };
+            }
+        });
+
+        return best ? best.path : paths[0];
+    }
+
+    function norm(s) {
+        if (!s) return "";
+        return String(s).replace(/[() 번]/g, "").trim();
+    }
+
     function drawRouteFromLane(data, originCoord, props) {
       if (!mapInstance) return;
       clearRouteOverlays();
@@ -774,7 +488,6 @@
       const stationNames   = [];
       const allStations = [];
       
-      // 뷰포트 조절용 전체 좌표 수집
       let allPointsForBounds = [];
       const originLatLng = new naver.maps.LatLng(originCoord.lat, originCoord.lng);
       const destLatLng   = new naver.maps.LatLng(DEST.lat, DEST.lng);
@@ -795,7 +508,7 @@
             if (isNaN(x) || isNaN(y)) continue;
             const latlng = new naver.maps.LatLng(y, x);
             path.push(latlng);
-            allPointsForBounds.push(latlng); // 뷰포트용
+            allPointsForBounds.push(latlng);
 
             if (!firstRoutePoint) firstRoutePoint = latlng;
             lastRoutePoint = latlng;
@@ -820,33 +533,23 @@
 
       for (const path of polyPaths) {
         const pl = new naver.maps.Polyline({
-          map: mapInstance,
-          path,
-          strokeColor: '#2563eb',
-          strokeWeight: 3,
-          strokeOpacity: 0.9
+          map: mapInstance, path,
+          strokeColor: '#2563eb', strokeWeight: 3, strokeOpacity: 0.9
         });
         routePolylines.push(pl);
       }
 
       for (let i = 0; i < stationLatLngs.length; i++) {
         const marker = new naver.maps.Marker({
-          map: mapInstance,
-          position: stationLatLngs[i],
-          icon: {
-            content: '<div class="stop-dot"></div>',
-            anchor: new naver.maps.Point(4,4)
-          },
+          map: mapInstance, position: stationLatLngs[i],
+          icon: { content: '<div class="stop-dot"></div>', anchor: new naver.maps.Point(4,4) },
           title: stationNames[i]
         });
         stopMarkers.push(marker);
       }
 
-      // --- props를 활용한 정류장 매칭 로직 (복원됨) ---
       let boardLatLng = firstRoutePoint; 
       let dropLatLng  = lastRoutePoint;
-
-      // 마커에 표시할 실제 이름 변수
       let finalBoardName = (props?.board || '').trim();
       let finalDropName  = (props?.drop || '').trim();
 
@@ -864,19 +567,13 @@
 
       if (boardLatLng) {
         const walk1 = new naver.maps.Polyline({
-          map: mapInstance,
-          path: [originLatLng, boardLatLng],
-          strokeColor: '#111827',
-          strokeOpacity: 0.8,
-          strokeStyle: [4, 6],
-          strokeWeight: 2
+          map: mapInstance, path: [originLatLng, boardLatLng],
+          strokeColor: '#111827', strokeOpacity: 0.8, strokeStyle: [4, 6], strokeWeight: 2
         });
         routePolylines.push(walk1);
 
         const boardMarker = new naver.maps.Marker({
-          map: mapInstance,
-          position: boardLatLng,
-          zIndex: 1000,
+          map: mapInstance, position: boardLatLng, zIndex: 1000,
           icon: {
             content: `
                 <div class="station-root-dot" style="border-color: #2563eb;">
@@ -891,19 +588,13 @@
 
       if (dropLatLng) {
         const walk2 = new naver.maps.Polyline({
-          map: mapInstance,
-          path: [dropLatLng, destLatLng],
-          strokeColor: '#111827',
-          strokeOpacity: 0.8,
-          strokeStyle: [4, 6],
-          strokeWeight: 2
+          map: mapInstance, path: [dropLatLng, destLatLng],
+          strokeColor: '#111827', strokeOpacity: 0.8, strokeStyle: [4, 6], strokeWeight: 2
         });
         routePolylines.push(walk2);
 
         const dropMarker = new naver.maps.Marker({
-          map: mapInstance,
-          position: dropLatLng,
-          zIndex: 1000,
+          map: mapInstance, position: dropLatLng, zIndex: 1000,
           icon: {
             content: `
                 <div class="station-root-dot" style="border-color: #ef4444;">
@@ -915,13 +606,11 @@
         });
         stopMarkers.push(dropMarker);
       }
-      
-      // 스마트 뷰포트 적용 (이건 편의기능이라 남겨둠)
       fitMapToBounds(allPointsForBounds);
       setStatus("경로 표시 완료");
     }
 
-    // ---------- 6. 로드 및 초기화 ----------
+    // ---------- 6. 로드 및 초기화 (기존과 동일) ----------
     async function loadData() {
       try {
         const res = await fetch(DATA_URL);
@@ -949,8 +638,7 @@
     function initMap() {
       const map = new naver.maps.Map('map', {
         center: new naver.maps.LatLng(DEST.lat, DEST.lng),
-        zoom: 14,
-        scaleControl: false, logoControl: false, mapDataControl: false,
+        zoom: 14, scaleControl: false, logoControl: false, mapDataControl: false,
       });
       mapInstance = map;
 
@@ -961,9 +649,7 @@
       });
 
       naver.maps.Event.addListener(map, 'idle', updateVisibleMarkers);
-      naver.maps.Event.addListener(map, 'click', () => {
-        closeSidebar(); 
-      });
+      naver.maps.Event.addListener(map, 'click', () => { closeSidebar(); });
 
       document.getElementById('btn-time').addEventListener('click', ()=>{ MODE='time'; applyMode(); });
       document.getElementById('btn-eff').addEventListener('click', ()=>{ MODE='eff'; applyMode(); });
@@ -973,34 +659,17 @@
       const label = document.getElementById('filter-val-label');
 
       if (filterCtrl && slider) {
-        // 1. 버튼 클릭 시 확장/축소 토글
         filterCtrl.addEventListener('click', (e) => {
-           // 슬라이더(input) 자체를 클릭하거나 드래그할 때는 닫히지 않도록 방지
            if (e.target === slider) return;
-           
-           // 'expanded' 클래스를 껐다 켰다 함 -> CSS가 반응하여 늘어났다 줄어듦
            filterCtrl.classList.toggle('expanded');
         });
-
-        // 2. 슬라이더 값 변경 시 동작
         slider.addEventListener('input', (e) => {
            const val = Number(e.target.value);
-           FILTER_LIMIT = val; // 전역 변수 업데이트
-
-           // 라벨 텍스트 업데이트
-           if (val === 60) {
-              label.textContent = '전체';
-           } else {
-              label.textContent = `${val}분`;
-           }
-           
-           // 지도 마커 새로고침 (필터링 적용)
+           FILTER_LIMIT = val; 
+           label.textContent = (val === 60) ? '전체' : `${val}분`;
            updateVisibleMarkers();
         });
       }
-
       loadData();
     }
   </script>
-</body>
-</html>
